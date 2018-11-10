@@ -18,7 +18,6 @@
         ======`-.____`-.___\_____/___.-`____.-'======
                            `=---='
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                 佛祖保佑        结果正确
         */
 
 #include <iostream>
@@ -45,7 +44,7 @@ using namespace std;
 double match_threshold = 0.2;
 double alpha_threshold = 1;
 int rm_cone_threshold = 0;
-int resultSize = 600;
+int resultSize = 752;
 vector<Scalar> COLOR = {{255,255,0},{0,255,255},{0,165,255},{0,0,255}};
 
 int global_i;
@@ -67,7 +66,7 @@ int m_width = 672;
 int m_height = 376;
 float m_maxZ = 8.2;
 int m_patchSize = 64;
-float m_threshold = 0.9;
+float m_threshold = 0.5;
 tiny_dnn::network<tiny_dnn::sequential> m_model;
 
 void show_image(cv::Mat img){
@@ -76,55 +75,55 @@ void show_image(cv::Mat img){
 	waitKey(0);
 }
 
-void blockMatching(cv::Mat& disp, cv::Mat imgL, cv::Mat imgR){
-  cv::Mat grayL, grayR, dispL, dispR;
-
-  cv::cvtColor(imgL, grayL, 6);
-  cv::cvtColor(imgR, grayR, 6);
-
-  cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create();
-  int blockSize=9;
-	int cn = 5;
-	// sgbm->setPreFilterCap(63);
-  sgbm->setBlockSize(blockSize);
-  sgbm->setP1(4*cn*blockSize*blockSize);
-  sgbm->setP2(32*cn*blockSize*blockSize);
-  // sgbm->setMinDisparity(0);
-  sgbm->setNumDisparities(32);
-  sgbm->setUniquenessRatio(10);
-  // sgbm->setSpeckleWindowSize(100);
-  // sgbm->setSpeckleRange(32);
-  // sgbm->setDisp12MaxDiff(1);
-  sgbm->compute(grayL, grayR, dispL);
-
-  disp = dispL/16;
-
-	cv::Mat disp8;
-	disp.convertTo(disp8, CV_8U, 255/32);
-
-	show_image(disp8);
-	cv::imwrite("tmp/stereoSGBM.png", disp8);
-}
-
-// void blockMatching(cv::Mat& disp, cv::Mat imgL, cv::Mat imgR){
+// void stereoSGBM(cv::Mat& disp, cv::Mat imgL, cv::Mat imgR){
 //   cv::Mat grayL, grayR, dispL, dispR;
 //
 //   cv::cvtColor(imgL, grayL, 6);
 //   cv::cvtColor(imgR, grayR, 6);
 //
-//   cv::Ptr<cv::StereoBM> sbmL = cv::StereoBM::create();
-//   sbmL->setBlockSize(19);
-//   sbmL->setNumDisparities(32);
-//   sbmL->setUniquenessRatio(15);
-//   sbmL->compute(grayL, grayR, dispL);
+//   cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create();
+//   int blockSize=9;
+// 	int cn = 5;
+// 	// sgbm->setPreFilterCap(63);
+//   sgbm->setBlockSize(blockSize);
+//   sgbm->setP1(4*cn*blockSize*blockSize);
+//   sgbm->setP2(32*cn*blockSize*blockSize);
+//   // sgbm->setMinDisparity(0);
+//   sgbm->setNumDisparities(32);
+//   sgbm->setUniquenessRatio(10);
+//   // sgbm->setSpeckleWindowSize(100);
+//   // sgbm->setSpeckleRange(32);
+//   // sgbm->setDisp12MaxDiff(1);
+//   sgbm->compute(grayL, grayR, dispL);
 //
 //   disp = dispL/16;
 //
-// 	// cv::Mat disp8;
-// 	// disp.convertTo(disp8, CV_8U, 255/32);
-// 	// show_image(disp8)
-// 	// cv::imwrite("tmp/stereoBM.png", disp8);
+// 	cv::Mat disp8;
+// 	disp.convertTo(disp8, CV_8U, 255/32);
+//
+// 	// show_image(disp8);
+// 	// cv::imwrite("tmp/stereoSGBM.png", disp8);
 // }
+
+void stereoBM(cv::Mat& disp, cv::Mat imgL, cv::Mat imgR){
+  cv::Mat grayL, grayR, dispL, dispR;
+
+  cv::cvtColor(imgL, grayL, 6);
+  cv::cvtColor(imgR, grayR, 6);
+
+  cv::Ptr<cv::StereoBM> sbmL = cv::StereoBM::create();
+  sbmL->setBlockSize(19);
+  sbmL->setNumDisparities(32);
+  sbmL->setUniquenessRatio(15);
+  sbmL->compute(grayL, grayR, dispL);
+
+  disp = dispL/16;
+
+	// cv::Mat disp8;
+	// disp.convertTo(disp8, CV_8U, 255/32);
+	// show_image(disp8)
+	// cv::imwrite("tmp/stereoBM.png", disp8);
+}
 
 void reconstruction(cv::Mat img, cv::Mat& Q, cv::Mat& rectified, cv::Mat& XYZ){
   //camera matrix of the left image sensor
@@ -171,7 +170,7 @@ void reconstruction(cv::Mat img, cv::Mat& Q, cv::Mat& rectified, cv::Mat& XYZ){
 
   cv::Mat disp;
   //compute disparity map by stereoBM
-	blockMatching(disp, imgL, imgR);
+	stereoBM(disp, imgL, imgR);
 
   imgL.copyTo(rectified);
 
@@ -377,7 +376,14 @@ int xyz2xy(cv::Mat Q, cv::Point3f xyz, cv::Point& xy, float radius){
   return int(radius * ( d * a + b ));
 }
 
-void forwardDetectionORB(cv::Mat img){
+cv::Mat forwardDetectionORB(int i){
+	String img_path = "images/"+to_string(i)+".png";
+	String csv_path = "tmp/results/"+to_string(i)+".csv";
+	std::ofstream file;
+	file.open(csv_path.c_str());
+
+	cv::Mat img = cv::imread(img_path);
+
 	std::vector<Cone> cones;
   std::vector<tiny_dnn::tensor_t> inputs;
   std::vector<int> verifiedIndex;
@@ -387,7 +393,7 @@ void forwardDetectionORB(cv::Mat img){
   colors.push_back(cv::Scalar(255,0,0));
   colors.push_back(cv::Scalar(0,255,255));
   colors.push_back(cv::Scalar(0,165,255));
-  std::string labels[] = {"background", "blue", "yellow", "orange"};
+  std::string labels[] = {"background", "blue", "yellow", "orange", "orange2"};
   int resultWidth = m_height;
   int resultHeight = m_height;
   cv::Mat result = cv::Mat::zeros(resultWidth,resultHeight,CV_8UC3);
@@ -405,7 +411,7 @@ void forwardDetectionORB(cv::Mat img){
   std::vector<cv::KeyPoint> keypoints;
   detector->detect(imgRoI, keypoints);
   if(keypoints.size()==0)
-    return;
+    return img;
 
   cv::Mat probMap[4] = cv::Mat::zeros(m_height, m_width, CV_64F);
 
@@ -415,13 +421,13 @@ void forwardDetectionORB(cv::Mat img){
   for(size_t i = 0; i < keypoints.size(); i++){
     cv::Point position(int(keypoints[i].pt.x), int(keypoints[i].pt.y)+rowT);
     cv::Point3f point3D = XYZ.at<cv::Point3f>(position);
-    if(point3D.y>0.7 && point3D.y<0.85 && point3D.z > 0 && point3D.z < m_maxZ){
+    // if(point3D.y>0.7 && point3D.y<0.85 && point3D.z > 0 && point3D.z < m_maxZ){
       point3Ds.push_back(point3D);
       positions.push_back(position);
-    }
+    // }
   }
   if(point3Ds.size()==0)
-    return;
+    return img;
   filterKeypoints(point3Ds);
   for(size_t i = 0; i < point3Ds.size(); i++){
     int radius = xyz2xy(Q, point3Ds[i], point2D, 0.3f);
@@ -489,6 +495,7 @@ void forwardDetectionORB(cv::Mat img){
       if (xt >= 0 && xt <= resultWidth && yt >= 0 && yt <= resultHeight){
         cv::circle(result, cv::Point (xt,yt), 6, colors[maxIndex], -1);
       }
+			file << x << "," << y << "," << labels[maxIndex] << "," << point3D.x << "," << point3D.y << "," << point3D.z << std::endl;
     }
   }
 
@@ -499,12 +506,14 @@ void forwardDetectionORB(cv::Mat img){
   cv::line(img, cv::Point(0,rowT), cv::Point(m_width,rowT), cv::Scalar(0,0,255), 2);
   cv::line(img, cv::Point(0,rowB), cv::Point(m_width,rowB), cv::Scalar(0,0,255), 2);
 
-  cv::Mat outImg;
-  cv::flip(result, result, 0);
-  cv::hconcat(img,result,outImg);
+  // cv::Mat outImg;
+  // cv::flip(result, result, 0);
+  // cv::hconcat(img,result,outImg);
 
 	// show_image(img);
-	// cv::imwrite("tmp/result1.png", img);
+	// cv::imwrite(result_path, img);
+	file.close();
+	return img;
 }
 
 
@@ -663,7 +672,7 @@ void estimateTransform2D(vector<Point3d> p1, vector<Point3d> p2, Mat& best_affin
 }
 
 
-void reconstruct(//初始化
+void reconstruct(
 	vector<KP>& last_keypoints,
 	vector<KP>& next_keypoints,
 	vector<Vec3b>& last_colors,
@@ -685,7 +694,7 @@ void reconstruct(//初始化
     }
 }
 
-void init_structure(//初始化
+void init_structure(
 	vector<vector<KP>>& keypoints_for_all,
 	vector<vector<Vec3b>>& colors_for_all,
 	vector<Point3d>& structure,
@@ -712,7 +721,7 @@ void init_structure(//初始化
 	int idx = 0;
 	for (int i = 0; i < matched.size(); ++i)
 	{
-		correspond_struct_idx[0][matched[i].queryIdx] = idx;//将第idx个match,即idx，存入correspond_struct_idx中，存的位置为：如果是前一张，则是第一行，后一张则是第二行，纵坐标对应点在图重视第几个feature point
+		correspond_struct_idx[0][matched[i].queryIdx] = idx;
 		correspond_struct_idx[1][matched[i].trainIdx] = idx;
 		++idx;
 	}
@@ -733,7 +742,7 @@ void fusion_structure(
 		int query_idx = matched[i].queryIdx;
 		int train_idx = matched[i].trainIdx;
 
-		int struct_idx = struct_indices[query_idx];//如果两者匹配，假如前一张图的匹配点能构成3D点，后一张图匹配点应该属于同一个3D点
+		int struct_idx = struct_indices[query_idx];
 		if (struct_idx >= 0)
 		{
 			next_struct_indices[train_idx] = struct_idx;
@@ -748,7 +757,6 @@ void fusion_structure(
 
 
 
-//定义代价函数
 struct ReprojectCost
 {
     Point2d observation;
@@ -757,13 +765,10 @@ struct ReprojectCost
         : observation(observation)
     {
     }
-   //使用模板的目的就是能够让程序员编写与类型无关的代码
-  //AutoDiffCostFunction<ReprojectCost, 2, 4, 6, 3>
     template <typename T>
-    bool operator()(const T* const extrinsic, const T* const structure, T* residuals) const//pos3d:对应的3D点；observation:相应的图片的坐标，
-   //通过对3D点来计算2D坐标值与实际值比较，检查R，T的正确性
+    bool operator()(const T* const extrinsic, const T* const structure, T* residuals) const
     {
-        residuals[0] = cos(extrinsic[0])*structure[0]-sin(extrinsic[0])*structure[1]+extrinsic[1] - T(observation.x);//反向投影误差
+        residuals[0] = cos(extrinsic[0])*structure[0]-sin(extrinsic[0])*structure[1]+extrinsic[1] - T(observation.x);
         residuals[1] = sin(extrinsic[0])*structure[0]+cos(extrinsic[0])*structure[1]+extrinsic[2] - T(observation.y);
 
         return true;
@@ -807,23 +812,23 @@ void ground_truth(Mat &result){
 	// waitKey(0);
 }
 
-void module(string data_path, int i, vector<vector<KP>> &keypoints_for_all, vector<vector<Vec3b>> &colors_for_all, vector<vector<int>> &correspond_struct_idx){
+cv::Mat module(int i, vector<vector<KP>> &keypoints_for_all, vector<vector<Vec3b>> &colors_for_all, vector<vector<int>> &correspond_struct_idx){
 	Vec3b blue(255,255,0);
 	Vec3b yellow(0,255,255);
 	Vec3b orange(0,165,255);
 	Vec3b orange2(0,0,255);
 
 	// String img_path = "images/"+to_string(i)+".png";
-	String img_path = "tmp/img.png";
-	cv::Mat img = cv::imread(img_path);
-	img *= 2;
+	// String img_path = "tmp/img.png";
+	// cv::Mat img = cv::imread(img_path);
+	// img *= 2;
 	// cv::imwrite("tmp/img1.png", img);
 	// show_image(img);
-	forwardDetectionORB(img);
+	cv::Mat img = forwardDetectionORB(i);
 
 	vector<KP> keypoints;
 	vector<Vec3b> colors;
-	ifstream csvPath ( data_path+"/"+to_string(i)+"_3d.csv" );
+	ifstream csvPath ( "results/"+to_string(i)+".csv" );
 	string line, x, y, label, X, Y, Z;
 	int id;
 	// Mat imgLast, imgNext, outImg;
@@ -865,7 +870,7 @@ void module(string data_path, int i, vector<vector<KP>> &keypoints_for_all, vect
 	}
 	if(keypoints.size()<2){
 		cout << i << ": too few keypoint!" << endl;
-		return;
+		return img;
 	}
 	keypoints_for_all.push_back(keypoints);
 	colors_for_all.push_back(colors);
@@ -873,14 +878,18 @@ void module(string data_path, int i, vector<vector<KP>> &keypoints_for_all, vect
 	vector<int> struct_idx;
 	struct_idx.resize(keypoints.size(), -1);
 	correspond_struct_idx.push_back(struct_idx);
+
+	return img;
 }
 
 int main( int argc, char** argv )
 {
-	CNN("tmp/model", m_model);
-	string data_path = argv[1];
-	int start = stoi(argv[2]);
-	int end = stoi(argv[3]);
+	CNN("model", m_model);
+	// string data_path = argv[1];
+	// int start = stoi(argv[1]);
+	// int end = stoi(argv[2]);
+	int start = 1;
+	int end = 226;
 	Mat K(Matx33d(
 		350.6847, 0, 332.4661,
 		0, 350.0606, 163.7461,
@@ -893,7 +902,7 @@ int main( int argc, char** argv )
 	vector<Point3d> structure;
 	vector<Vec3b> colors;
 	vector<vector<int>> correspond_struct_idx;
-	double resultResize = 93*1.5;
+	double resultResize = 140;
 
 	vector<vector<KP>> keypoints_for_all;
 	vector<vector<Vec3b>> colors_for_all;
@@ -904,15 +913,15 @@ int main( int argc, char** argv )
 
 	for(int i = start; i < start+2; i++)
 	{
-		clock_t currentTime = clock();
+		// clock_t currentTime = clock();
 
-    	module(data_path, i, keypoints_for_all, colors_for_all, correspond_struct_idx);
+    	module(i, keypoints_for_all, colors_for_all, correspond_struct_idx);
 
-    	double dur = (double)(clock()-currentTime);
-		cout << dur/1000 << endl;
+    // 	double dur = (double)(clock()-currentTime);
+		// cout << dur/1000 << endl;
 	}
 
-	init_structure(//此时已做完第一张图和第二张图的重建，rotations和motions里放了两张图的R和T
+	init_structure(
 		keypoints_for_all,
 		colors_for_all,
 		structure,
@@ -922,11 +931,11 @@ int main( int argc, char** argv )
 		);
 
 	int global_i = 0;
-	for (int ii = start+2; ii < end+1; ii++)//遍历，从第二张图和第三张图开始，每次两张图的match
+	for (int ii = start+2; ii < end+1; ii++)
 	{
-		clock_t currentTime = clock();
+		// clock_t currentTime = clock();
 		global_i++;
-		module(data_path, ii, keypoints_for_all, colors_for_all, correspond_struct_idx);
+		cv::Mat img = module(ii, keypoints_for_all, colors_for_all, correspond_struct_idx);
 
 		Mat affine, affine_tmp;
 		vector<Point3d> p2, p2_tmp;
@@ -982,14 +991,16 @@ int main( int argc, char** argv )
 		}
 
 		flip(result, result, 0);
-	 //    namedWindow("result", WINDOW_NORMAL);
-	 //    cv::setWindowProperty("result", cv::WND_PROP_FULLSCREEN , cv::WINDOW_FULLSCREEN );
-		// imshow("result", result);
-		// waitKey(30);
+		resize(img, img, cv::Size(), 2, 2);
+		hconcat(img, result, result);
+    namedWindow("result", WINDOW_NORMAL);
+    cv::setWindowProperty("result", cv::WND_PROP_FULLSCREEN , cv::WINDOW_FULLSCREEN );
+		imshow("result", result);
+		waitKey(30);
 		// imwrite("svo_results/"+to_string(global_i)+".png", result);
 
-		double dur = (double)(clock()-currentTime);
-		cout << dur/1000 << endl;
+		// double dur = (double)(clock()-currentTime);
+		// cout << dur/1000 << endl;
 	}
 
 	vector<int> count_same_structure;
@@ -1062,7 +1073,7 @@ int main( int argc, char** argv )
 	}
 
 	flip(result, result, 0);
-    namedWindow("result", WINDOW_NORMAL);
+  namedWindow("result", WINDOW_NORMAL);
 	imshow("result", result);
 	waitKey(0);
 	// imwrite("result/"+to_string(i)+".png", result);
